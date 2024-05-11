@@ -1,6 +1,8 @@
-../LCD/Src/LCD.c:9:6:lcd_send_cmd	1
-../LCD/Src/LCD.c:22:6:lcd_send_data	1
-../LCD/Src/LCD.c:35:6:lcd_clear	2
-../LCD/Src/LCD.c:44:6:lcd_put_cur	3
-../LCD/Src/LCD.c:60:6:lcd_init	1
-../LCD/Src/LCD.c:86:6:lcd_send_string	2
+../LCD/Src/LCD.c:18:13:wait_for_gpio_state_timeout	6
+../LCD/Src/LCD.c:42:13:I2C_ClearBusyFlagErratum	1
+../LCD/Src/LCD.c:121:6:lcd_send_cmd	1
+../LCD/Src/LCD.c:134:6:lcd_send_data	2
+../LCD/Src/LCD.c:152:6:lcd_clear	2
+../LCD/Src/LCD.c:161:6:lcd_put_cur	3
+../LCD/Src/LCD.c:177:6:lcd_init	1
+../LCD/Src/LCD.c:203:6:lcd_send_string	2

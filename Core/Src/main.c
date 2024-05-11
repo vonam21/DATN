@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#define HIGH_LOAD 	0
+#define LOW_LOAD 	1
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -72,10 +73,12 @@ static void MX_TIM4_Init(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
+
 /* USER CODE BEGIN 0 */
 #include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <LCD.h>
 uint8_t dataRX[1];
 uint8_t dataTX[10] = "da gui\n";
 uint8_t dataTX1[10] = "trung roi\n";
@@ -89,7 +92,6 @@ uint8_t save_data_chuoi_RX_PAYLOAD[15] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 uint8_t so_sanh_chuoi_RX_PAYLOAD[15] = "CMQTTRXPAYLOAD:";
 uint8_t so_sanh_chuoi_xuong_dong[1] = "\n";
 uint8_t save_data_chuoi_RX_PAYLOAD_DATA[1] ={0};
-
 
 
 
@@ -120,7 +122,7 @@ uint8_t message[40];
 volatile int led =0, quat =0, bom =0;
 int nguong_adc_quang_tro = 3000,nguong_adc_do_am_dat = 3000;
 int nguong_nhiet_do = 30;
-int mode = 0;
+int mode = 1;
 int flag_mode_bang_tay =1;
 int flag_mode_tu_dong =0;
 
@@ -161,13 +163,14 @@ int count_state_lcd =1;
 char  nhiet_do[20],do_am[20];
 int adc_quang_tro =0,adc_do_am_dat =0;
 
-int flag_ngat_timer1 =0;
-int flag_ngat_timer3 =1;
+int flag_send_data =0;
+int flag_ngat_keypad =1;
 int flag_number=0;
 int flag_chuyen_lcd=1;
 int flag_ngat_uart_xong_message=0;
 int flag_lan_dau_nhap_mat_khau=0;
-char message_gui_server[60];
+uint8_t message_gui_server[60];
+uint8_t message_gui_server1[2];
 
 char mat_khau_dung[6] = {1,2,3,4,5,6};
 char mat_khau_user[6] = {0,0,0,0,0,0};
@@ -175,20 +178,33 @@ int count_mat_khau=0;
 int count_may_chu_nhap_vao=0;
 int flag_di_qua_nhap_mat_khau =0;
 int flag_timer4 =0;
+
+bool flag_disable_nut_nhan=0;
+int status_previous_led =0;
+int status_previous_quat =0;
+int status_previous_bom =0;
+
+
+
+
+
+void xu_ly_tick_dht11(uint8_t* tick,uint8_t* data_dht11);
+void doc_dht11(void);
+void update(void);
 void send_data_to_server (void) {
 	  flag_check_RX_PAYLOAD =0;
 	  flag_check_OK =1;
 	  flag_pass = 0;
-	  HAL_UART_Transmit(&huart1, data_SIM5, strlen(data_SIM5), 10);
+	  HAL_UART_Transmit(&huart1, data_SIM5, strlen((const char*)data_SIM5), 10);
 	  HAL_Delay(300);
 	  update();
-	  HAL_UART_Transmit(&huart1, data_SIM6, strlen(data_SIM6), 10);
+	  HAL_UART_Transmit(&huart1, data_SIM6, strlen((const char*)data_SIM6), 10);
 	  HAL_Delay(100);
 //	  while(flag_pass==0);
 	  ////////////////////// 5 6//////////////////
 	  update();
 	  flag_pass = 0;
-	  HAL_UART_Transmit(&huart1, data_SIM7, strlen(data_SIM7), 10);
+	  HAL_UART_Transmit(&huart1, data_SIM7, strlen((const char*)data_SIM7), 10);
 	  HAL_Delay(300);
 	  update();
 	   a = led%2;
@@ -216,22 +232,40 @@ void send_data_to_server (void) {
 	   } else {
 		   check_bom =1;
 	   }
-	  sprintf(message_gui_server,"%d.%d %d.%d %d %d %d %d %d %d %d %d %d\n\n\n\n\n\n\n\n", data_dht11[2], data_dht11[3],data_dht11[0],data_dht11[1],adc_quang_tro,adc_do_am_dat,a,b,c,d,check_led,check_quat,check_bom);
-UART10:	  HAL_UART_Transmit(&huart1, message_gui_server, strlen(message_gui_server), 500);
+	  sprintf((char*)message_gui_server,"%d.%d %d.%d %d %d %d %d %d %d %d %d %d\n\n\n\n\n\n\n\n", data_dht11[2], data_dht11[3],data_dht11[0],data_dht11[1],adc_quang_tro,adc_do_am_dat,a,b,c,d,check_led,check_quat,check_bom);
 
+	  UART10:
 	  HAL_TIM_Base_Start_IT(&htim4);
 	  flag_timer4=0;
 	  __HAL_TIM_SET_COUNTER(&htim4,0);
+	  HAL_UART_Transmit(&huart1, message_gui_server, strlen((const char*)message_gui_server), 500);
 	  while(flag_pass==0){
 		  if(flag_timer4 ==1)
 		  {
+			  HAL_TIM_Base_Start_IT(&htim4);
 			  goto UART10;
 		  }
 	  }
+	  flag_timer4=0;
+	  __HAL_TIM_SET_COUNTER(&htim4,0);
+	  HAL_TIM_Base_Stop_IT(&htim4);
 	  //////////////////// 7 8//////////////////////////////
-	  flag_pass = 0;
-	  HAL_UART_Transmit(&huart1, data_SIM9, strlen(data_SIM9), 10);
-	  while(flag_pass==0);
+
+	  UART9:
+	  HAL_TIM_Base_Start_IT(&htim4);
+	  flag_timer4=0;
+	  __HAL_TIM_SET_COUNTER(&htim4,0);
+	  HAL_UART_Transmit(&huart1, data_SIM9, strlen((const char*)data_SIM9), 10);
+	  while(flag_pass==0) {
+		  if(flag_timer4 ==1)
+		  {
+			  HAL_TIM_Base_Start_IT(&htim4);
+			  goto UART9;
+		  }
+	  }
+	  flag_timer4=0;
+	  __HAL_TIM_SET_COUNTER(&htim4,0);
+	  HAL_TIM_Base_Stop_IT(&htim4);
 	  flag_check_RX_PAYLOAD =1;
 	  flag_check_OK =0;
 
@@ -245,24 +279,37 @@ void init_sim(void) {
 	  flag_check_OK =1;
 
 	  flag_pass = 0;
-	  HAL_UART_Transmit(&huart1, data_SIM1, strlen(data_SIM1), 10);
+	  HAL_UART_Transmit(&huart1, data_SIM1, strlen((const char*)data_SIM1), 10);
 	  while(flag_pass==0);
 	  //////////////1//////////////////
 	  flag_pass = 0;
-	  HAL_UART_Transmit(&huart1, data_SIM2, strlen(data_SIM2), 10);
+	  HAL_UART_Transmit(&huart1, data_SIM2, strlen((const char*)data_SIM2), 10);
 	  while(flag_pass==0);
 	  ////////////////2///////////////////
 	  flag_pass = 0;
-	  HAL_UART_Transmit(&huart1, data_SIM3, strlen(data_SIM3), 10);
-	  while(flag_pass==0);
+	  UART3:
+	  	  HAL_TIM_Base_Start_IT(&htim4);
+	  	  flag_timer4=0;
+	  	  __HAL_TIM_SET_COUNTER(&htim4,0);
+	  	HAL_UART_Transmit(&huart1, data_SIM3, strlen((const char*)data_SIM3), 10);
+	  	  while(flag_pass==0){
+	  		  if(flag_timer4 ==1)
+	  		  {
+	  			  HAL_TIM_Base_Start_IT(&htim4);
+	  			  goto UART3;
+	  		  }
+	  	  }
+	  	  flag_timer4=0;
+	  	  __HAL_TIM_SET_COUNTER(&htim4,0);
+	  	  HAL_TIM_Base_Stop_IT(&htim4);
 	  ////////////////////////3/////////////////////
 	  flag_pass = 0;
-	  HAL_UART_Transmit(&huart1, data_SIM4, strlen(data_SIM4), 10);
+	  HAL_UART_Transmit(&huart1, data_SIM4, strlen((const char*)data_SIM4), 10);
 	  while(flag_pass==0);
 	  flag_pass = 0;
-	  HAL_UART_Transmit(&huart1, data_SIM10, strlen(data_SIM10), 10);
+	  HAL_UART_Transmit(&huart1, data_SIM10, (uint16_t)strlen((const char*)data_SIM10), 10);
 	  HAL_Delay(100);
-	  HAL_UART_Transmit(&huart1, data_SIM11, strlen(data_SIM11), 10);
+	  HAL_UART_Transmit(&huart1, data_SIM11, (uint16_t)strlen((const char*)data_SIM11), 10);
 	  while(flag_pass==0);
 	  flag_check_RX_PAYLOAD =1;
 	  flag_check_OK =0;
@@ -281,53 +328,75 @@ void update(void)
 	switch( mode % 2 ) {
 			  case 0:
 			  {
+				  flag_disable_nut_nhan=0;
 				  flag_mode_bang_tay =1;
 				  flag_mode_tu_dong =0;
 				  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, 1);
 				  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, 0);
+				  status_previous_led=led;
+				  status_previous_quat=quat;
+				  status_previous_bom=bom;
 				  if((led % 2) == 1)
 				  {
-					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, 1);
+					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, HIGH_LOAD);
 				  }else{
-					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, 0);
+					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, LOW_LOAD);
 				  }
 				  if((quat % 2) == 1)
 				  {
-					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, 1);
+					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, HIGH_LOAD);
 				  }else{
-					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, 0);
+					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, LOW_LOAD);
 				  }
 				  if((bom % 2) == 1)
 				  {
-					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, 1);
+					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, HIGH_LOAD);
 				  }else{
-					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, 0);
+					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, LOW_LOAD);
 				  }
 				  break;
 			  }
 			  case 1:
 			  {
+				  if(flag_di_qua_nhap_mat_khau==1){
+					  flag_disable_nut_nhan=1;
+				  } else {
+					  flag_disable_nut_nhan=0;
+				  }
 				  flag_mode_tu_dong=1;
 				  flag_mode_bang_tay =0;
 				  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, 0);
 				  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, 1);
+				  int check_status_pre = ((status_previous_led%2) != (led%2)) || ((status_previous_quat%2) != (quat%2)) || ((status_previous_bom%2) != (bom%2));
+				  status_previous_led=led;
+				  status_previous_quat=quat;
+				  status_previous_bom=bom;
+				  if(check_status_pre) {
+					  flag_ngat_keypad=1;
+				  }
 				  if( adc_quang_tro > nguong_adc_quang_tro)
 				  {
-					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, 1);
+					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, HIGH_LOAD);
+					  led =1;
 				  }else{
-					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, 0);
+					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_11, LOW_LOAD);
+					  led=0;
 				  }
 				  if(data_dht11[3] > nguong_nhiet_do)
 				  {
-					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, 1);
+					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, HIGH_LOAD);
+					  quat=1;
 				  }else{
-					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, 0);
+					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, LOW_LOAD);
+					  quat=0;
 				  }
 				  if(adc_do_am_dat > nguong_adc_do_am_dat)
 				  {
-					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, 1);
+					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, HIGH_LOAD);
+					  bom=1;
 				  }else{
-					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, 0);
+					  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, LOW_LOAD);
+					  bom=0;
 				  }
 				  break;
 			  }
@@ -449,9 +518,9 @@ int main(void)
 				message[i] = 0;
 			}
 		}
-		if(flag_ngat_timer1)
+		if(flag_send_data)
 		{
-			flag_ngat_timer1 =0;
+			flag_send_data =0;
 			doc_dht11();
 			HAL_Delay(10);
 			xu_ly_tick_dht11(tick,data_dht11);
@@ -479,9 +548,9 @@ int main(void)
 			HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 		}
 		update();
-		if( flag_ngat_timer3 )
+		if( flag_ngat_keypad )
 		{
-			flag_ngat_timer3=0;
+			flag_ngat_keypad=0;
 			switch(count_state_lcd%4)
 					{
 						case 0:
@@ -587,7 +656,7 @@ int main(void)
 										}
 										if(value_bang) {
 											count_state_lcd =2;
-											flag_ngat_timer3=1;
+											flag_ngat_keypad=1;
 											lcd_clear();
 											lcd_put_cur(0,1);
 											lcd_send_string("Mat khau dung ->>");
@@ -596,7 +665,7 @@ int main(void)
 										} else {
 											count_state_lcd =1;
 											flag_chuyen_lcd=1;
-											flag_ngat_timer3=1;
+											flag_ngat_keypad=1;
 											lcd_clear();
 											lcd_put_cur(0,1);
 											lcd_send_string("Mat khau sai ");
@@ -1203,7 +1272,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 //			}
 //			save_data_test[19] = *dataRX;
 			if(*dataRX == 'K') {
-				if(strcmp(save_data_chuoi_OK,so_sanh_chuoi_OK)==0){
+				if(strcmp((const char*)save_data_chuoi_OK,(const char*)so_sanh_chuoi_OK)==0){
 					flag_pass=1;
 				}
 			}
@@ -1216,8 +1285,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 				save_data_chuoi_CMQTT[i] = save_data_chuoi_CMQTT[i+1];
 			}
 			save_data_chuoi_CMQTT[4]=*dataRX;
-			if(strcmp(save_data_chuoi_CMQTT,so_sanh_chuoi_CMQTT)==0){
-				HAL_UART_Transmit(huart, dataTX1, strlen(dataTX1), 10);
+			if(strcmp((const char*)save_data_chuoi_CMQTT,(const char*)so_sanh_chuoi_CMQTT)==0){
+				HAL_UART_Transmit(huart, dataTX1, strlen((const char*)dataTX1), 10);
 			}
 //			HAL_UART_Transmit(huart, dataTX, strlen(dataTX), 10);
 //			HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
@@ -1229,8 +1298,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 				save_data_chuoi_PB_DONE[i] = save_data_chuoi_PB_DONE[i+1];
 			}
 			save_data_chuoi_PB_DONE[6]=*dataRX;
-			if(strcmp(save_data_chuoi_PB_DONE,so_sanh_chuoi_PB_DONE)==0){
-				HAL_UART_Transmit(huart, dataTX1, strlen(dataTX1), 10);
+			if(strcmp((const char*)save_data_chuoi_PB_DONE,(const char*)so_sanh_chuoi_PB_DONE)==0){
+				HAL_UART_Transmit(huart, dataTX1, strlen((const char*)dataTX1), 10);
 			}
 			HAL_UART_Receive_IT(huart, dataRX, sizeof(dataRX));
 		}
@@ -1242,7 +1311,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 					save_data_chuoi_RX_PAYLOAD[i] = save_data_chuoi_RX_PAYLOAD[i+1];
 				}
 				save_data_chuoi_RX_PAYLOAD[14]=*dataRX;
-				if(strcmp(save_data_chuoi_RX_PAYLOAD,so_sanh_chuoi_RX_PAYLOAD)==0){
+				if(strcmp((const char*)save_data_chuoi_RX_PAYLOAD,(const char*)so_sanh_chuoi_RX_PAYLOAD)==0){
 					flag_pass_RX_PAYLOAD = 1;
 	//				HAL_UART_Transmit(huart, dataTX1, strlen(dataTX1), 10);
 				}
@@ -1261,18 +1330,20 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 						flag_pass_all_RX_PAYLOAD =1;
 						flag_pass_RX_PAYLOAD =0;
 						flag_ngat_uart_xong_message=1;
-						sscanf(message, "%d %d %d %d %d %d %d", &led, &quat, &bom,&mode,&nguong_adc_quang_tro,&nguong_adc_do_am_dat,&nguong_nhiet_do);
+						sscanf((const char*)message, "%d %d %d %d %d %d %d", &led, &quat, &bom,&mode,&nguong_adc_quang_tro,&nguong_adc_do_am_dat,&nguong_nhiet_do);
 						for(int i=0 ; i < sizeof(message); i++ )
 						{
 							message[i] = 0;
 						}
+						flag_ngat_keypad=1;
+						flag_send_data=1;
 						HAL_TIM_Base_Start_IT(&htim1);
 
 					}
 
 				}
 				save_data_chuoi_RX_PAYLOAD_DATA[0] = *dataRX;
-				if(strcmp(save_data_chuoi_RX_PAYLOAD_DATA,so_sanh_chuoi_xuong_dong)==0)
+				if(strcmp((const char*)save_data_chuoi_RX_PAYLOAD_DATA,(const char*)so_sanh_chuoi_xuong_dong)==0)
 				{
 					if(!flag_phan_biet_xuong_dong_data) {
 						flag_pass_RX_PAYLOAD_next =1;
@@ -1292,7 +1363,7 @@ void HAL_TIM_PeriodElapsedCallback (TIM_HandleTypeDef *htim)
 	if(htim->Instance == TIM1)
 	{
 //		send_data_to_server();
-		flag_ngat_timer1=1;
+		flag_send_data=1;
 		du_time_to_send_data=1;
 	}
 
@@ -1302,7 +1373,7 @@ void HAL_TIM_PeriodElapsedCallback (TIM_HandleTypeDef *htim)
 		}
 	if(htim->Instance == TIM3)
 	{
-		flag_ngat_timer3=1;
+		flag_ngat_keypad=1;
 		HAL_TIM_Base_Stop_IT(&htim3);
 	}
 	if(htim->Instance == TIM4)
@@ -1316,6 +1387,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	if(GPIO_Pin == GPIO_PIN_2)
 	{
+
 		currentTime = HAL_GetTick(); // Lấy th�?i gian hiện tại
 		if ((currentTime - lastDebounceTime) > debounceDelay)
 		{
@@ -1326,44 +1398,54 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9,1);
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,1);
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0,1);
-				if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == 0)
+				if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == 0) && (flag_disable_nut_nhan==0))
 				{
+//					  GPIO_InitTypeDef GPIO_InitStruct = {0};
+//					  GPIO_InitStruct.Pin = GPIO_PIN_2;
+//					  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+//					  GPIO_InitStruct.Pull = GPIO_PULLUP;
+//					  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+//					num1_state1++;
+//					flag_number_state1=1;
+//					flag_ngat_keypad_state1=1;
+//					  state_ngat_2 =1;
+//					  state_ngat_1=0;
 					num1++;
 					flag_number=1;
-					HAL_TIM_Base_Start_IT(&htim3);
+					flag_ngat_keypad=1;
+
 				} else {
 					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8,1);
 					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9,0);
 					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,1);
 					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0,1);
-					if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == 0)
+					if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == 0)&& (flag_disable_nut_nhan==0))
 					{
 						num2++;
 						flag_number=2;
-						HAL_TIM_Base_Start_IT(&htim3);
+						flag_ngat_keypad=1;
 					} else {
 						HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8,1);
 						HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9,1);
 						HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,0);
 						HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0,1);
-						if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == 0)
+						if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == 0)&& (flag_disable_nut_nhan==0))
 						{
 							num3++;
 							flag_number=3;
-							HAL_TIM_Base_Start_IT(&htim3);
+							flag_ngat_keypad=1;
 						} else {
 							HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8,1);
 							HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9,1);
 							HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,1);
 							HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0,0);
-							if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == 0)
+							if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == 0)&& (flag_disable_nut_nhan==0))
 							{
 								if( flag_di_qua_nhap_mat_khau )
 								{
 									led++;
 									flag_number=10;
-									HAL_TIM_Base_Start_IT(&htim3);
-									update();
+									flag_ngat_keypad=1;
 								}
 							}
 						}
@@ -1375,6 +1457,19 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,0);
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0,0);
 			}
+//			if(state_ngat_2==1) {
+//				currentTime = HAL_GetTick(); // Lấy th�?i gian hiện tại
+//				if ((currentTime - lastDebounceTime) > debounceDelay)
+//				{
+//					if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_2) == 1)
+//					{
+//						num1++=num1_state_1;
+//						flag_number=num1_state_1;
+//						flag_ngat_keypad=1;
+//					}
+//				}
+//				lastDebounceTime = currentTime; // Cập nhật th�?i gian debounce cuối cùng
+//			}
 
 			lastDebounceTime = currentTime; // Cập nhật th�?i gian debounce cuối cùng
 		}
@@ -1393,44 +1488,43 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9,1);
 					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,1);
 					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0,1);
-					if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3) == 0)
+					if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3) == 0)&& (flag_disable_nut_nhan==0))
 					{
 						num4++;
 						flag_number=4;
-						HAL_TIM_Base_Start_IT(&htim3);
+						flag_ngat_keypad=1;
 					} else {
 						HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8,1);
 						HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9,0);
 						HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,1);
 						HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0,1);
-						if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3) == 0)
+						if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3) == 0)&& (flag_disable_nut_nhan==0))
 						{
 							num5++;
 							flag_number=5;
-							HAL_TIM_Base_Start_IT(&htim3);
+							flag_ngat_keypad=1;
 						} else {
 							HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8,1);
 							HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9,1);
 							HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,0);
 							HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0,1);
-							if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3) == 0)
+							if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3) == 0)&& (flag_disable_nut_nhan==0))
 							{
 								num6++;
 								flag_number=6;
-								HAL_TIM_Base_Start_IT(&htim3);
+								flag_ngat_keypad=1;
 							} else {
 								HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8,1);
 								HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9,1);
 								HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,1);
 								HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0,0);
-								if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3) == 0)
+								if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_3) == 0)&& (flag_disable_nut_nhan==0))
 								{
 									if( flag_di_qua_nhap_mat_khau )
 									{
 										quat++;
 										flag_number=10;
-										HAL_TIM_Base_Start_IT(&htim3);
-										update();
+										flag_ngat_keypad=1;
 									}
 								}
 							}
@@ -1454,50 +1548,49 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 			if ((currentTime - lastDebounceTime) > debounceDelay)
 			{
 				// Cập nhật trạng thái nút nhấn chỉ khi đã qua th�?i gian debounce
-				if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4) == 0)
+				if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4) == 0)&& (flag_disable_nut_nhan==0))
 				{
 					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8,0);
 					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9,1);
 					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,1);
 					HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0,1);
-					if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4) == 0)
+					if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4) == 0)&& (flag_disable_nut_nhan==0))
 					{
 						num7++;
 						flag_number=7;
-						HAL_TIM_Base_Start_IT(&htim3);
+						flag_ngat_keypad=1;
 					} else {
 						HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8,1);
 						HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9,0);
 						HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,1);
 						HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0,1);
-						if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4) == 0)
+						if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4) == 0)&& (flag_disable_nut_nhan==0))
 						{
 							num8++;
 							flag_number=8;
-							HAL_TIM_Base_Start_IT(&htim3);
+							flag_ngat_keypad=1;
 						} else {
 							HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8,1);
 							HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9,1);
 							HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,0);
 							HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0,1);
-							if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4) == 0)
+							if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4) == 0)&& (flag_disable_nut_nhan==0))
 							{
 								num9++;
 								flag_number=9;
-								HAL_TIM_Base_Start_IT(&htim3);
+								flag_ngat_keypad=1;
 							} else {
 								HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8,1);
 								HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9,1);
 								HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,1);
 								HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0,0);
-								if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4) == 0)
+								if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4) == 0)&& (flag_disable_nut_nhan==0))
 								{
 									if( flag_di_qua_nhap_mat_khau )
 									{
 										bom++;
 										flag_number=10;
-										HAL_TIM_Base_Start_IT(&htim3);
-										update();
+										flag_ngat_keypad=1;
 									}
 								}
 							}
@@ -1536,28 +1629,28 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 							count_state_lcd ++;
 							flag_chuyen_lcd=1;
 							flag_number=10;
-							HAL_TIM_Base_Start_IT(&htim3);
+							flag_ngat_keypad=1;
 						}
 					} else {
 						HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8,1);
 						HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9,0);
 						HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,1);
 						HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0,1);
-						if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_5) == 0)
+						if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_5) == 0)&& (flag_disable_nut_nhan==0))
 						{
 							num0++;
 							flag_number=0;
-							HAL_TIM_Base_Start_IT(&htim3);
+							flag_ngat_keypad=1;
 						} else {
 							HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8,1);
 							HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9,1);
 							HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10,0);
 							HAL_GPIO_WritePin(GPIOB, GPIO_PIN_0,1);
-							if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_5) == 0)
+							if ((HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_5) == 0)&& (flag_disable_nut_nhan==0))
 							{
 								num_thang++;
 								flag_number=11;
-								HAL_TIM_Base_Start_IT(&htim3);
+								flag_ngat_keypad=1;
 							} else {
 								HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8,1);
 								HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9,1);
@@ -1569,8 +1662,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 									{
 										mode++;
 										flag_number=10;
-										HAL_TIM_Base_Start_IT(&htim3);
-										update();
+										flag_ngat_keypad=1;
 									}
 								}
 							}
